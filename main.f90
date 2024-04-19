@@ -10,34 +10,34 @@ module raylib
     end type color_type
 
     interface
-        subroutine initwin(width, height, title) bind(C, name="InitWindow")
+        subroutine init_win(width, height, title) bind(C, name="InitWindow")
             use iso_c_binding, only: c_char, c_int
             integer(kind=c_int), value :: width
             integer(kind=c_int), value :: height
             character(kind=c_char) :: title(*)
-        end subroutine initwin
+        end subroutine init_win
 
         function win_should_close() bind(C, name="WindowShouldClose")
             use iso_c_binding, only: c_bool
             logical(kind=c_bool) :: win_should_close
         end function win_should_close
 
-        subroutine begindraw() bind(C, name="BeginDrawing")
-        end subroutine begindraw
+        subroutine begin_draw() bind(C, name="BeginDrawing")
+        end subroutine begin_draw
 
-        subroutine enddraw() bind(C, name="EndDrawing")
-        end subroutine enddraw
+        subroutine end_draw() bind(C, name="EndDrawing")
+        end subroutine end_draw
 
-        subroutine closewin() bind(C, name="CloseWindow")
-        end subroutine closewin
+        subroutine close_win() bind(C, name="CloseWindow")
+        end subroutine close_win
 
-        subroutine drawpixel(posX, posY, color) bind(C, name="DrawPixel")
+        subroutine draw_pixel(posX, posY, color) bind(C, name="DrawPixel")
             use iso_c_binding, only: c_int
             import :: color_type
             integer(kind=c_int), value :: posX
             integer(kind=c_int), value :: posY
             type(color_type), value :: color
-        end subroutine drawpixel
+        end subroutine draw_pixel
     end interface
 end module raylib
 
@@ -74,33 +74,32 @@ module mandelbrot
         z = 0
         iteration = 0
         max_iterations = 1000
-        do while (cabs(z) < 4 .and. iteration < max_iterations)
+        do while (cabs(z) < 2 .and. iteration < max_iterations)
             z = z*z + z0
             iteration = iteration + 1
         enddo
         
         if (iteration >= max_iterations) then
-
-            escapes = .true.
-        else
             escapes = .false.
+        else
+            escapes = .true.
         end if
     end function escapes
 
-    function fillmatrix(width, height)
+    function fill_color_matrix(width, height)
         integer, intent(in) :: width
         integer, intent(in) :: height
-        logical :: fillmatrix(width, height)
+        logical :: fill_color_matrix(width, height)
         integer :: pix_x, pix_y
         complex :: z
         
         do pix_x = 1, width
             do pix_y = 1, height
                 z = scalepixel(pix_x, pix_y, width, height)
-                fillmatrix(pix_x,pix_y) = escapes(z)
+                fill_color_matrix(pix_x,pix_y) = escapes(z)
             enddo
         enddo
-    end function fillmatrix
+    end function fill_color_matrix
 end module mandelbrot
 
 program draw_rect
@@ -109,33 +108,31 @@ program draw_rect
     use iso_c_binding
     implicit none
 
-    integer(c_int) :: width, height
+    integer(c_int), parameter :: width = 800
+    integer(c_int), parameter :: height = 500
     integer(c_int) :: pix_x, pix_y
-    logical, dimension(800, 500) :: does_escape
+    logical, dimension(width, height) :: color_matrix
 
-    width = 800
-    height = 500
+    color_matrix = fill_color_matrix(width, height)
 
-    does_escape = fillmatrix(width, height)
-
-    call initwin(width, height, "Mandelbrot Set"//c_null_char)
+    call init_win(width, height, "Mandelbrot Set"//c_null_char)
 
     do while (.not. win_should_close())
-        call begindraw()
+        call begin_draw()
 
         do pix_x = 1, width
             do pix_y = 1, height
-                if (does_escape(pix_x, pix_y)) then
-                    call drawpixel(pix_x, pix_y, color_type(127, 40, 40, 127))
+                if (color_matrix(pix_x, pix_y)) then
+                    call draw_pixel(pix_x, pix_y, color_type(127, 127, 127, 127))
                 else
-                    call drawpixel(pix_x, pix_y, color_type(0, 0, 0, 127))
+                    call draw_pixel(pix_x, pix_y, color_type(0, 0, 0, 127))
                 end if
             enddo
         enddo
 
-        call enddraw()
+        call end_draw()
     enddo
     
-    call closewin()
+    call close_win()
 
 end program
