@@ -42,6 +42,7 @@ module raylib
 end module raylib
 
 module mandelbrot
+    use raylib
     contains
     pure complex function scalepixel(pixel_x, pixel_y, width, height)
         integer, intent(in) :: pixel_x
@@ -65,31 +66,33 @@ module mandelbrot
         scalepixel = complex(x, y)
     end function
 
-    pure logical function escapes(z0) 
+     pure type(color_type) function escapes(z0) 
         complex, intent(in) :: z0
         complex :: z
         integer :: max_iterations
         integer :: iteration
+        integer :: scaled_iter
         
         z = 0
         iteration = 0
-        max_iterations = 1000
+        max_iterations = 100
         do while (cabs(z) < 2 .and. iteration < max_iterations)
             z = z*z + z0
             iteration = iteration + 1
         enddo
         
         if (iteration >= max_iterations) then
-            escapes = .false.
+            escapes = color_type(0, 0, 0, 255)
         else
-            escapes = .true.
+            scaled_iter = int(255*(1 - exp(-5*real(iteration)/max_iterations)))
+            escapes = color_type(scaled_iter, scaled_iter, 255-scaled_iter, 255)
         end if
     end function escapes
 
     function fill_color_matrix(width, height)
         integer, intent(in) :: width
         integer, intent(in) :: height
-        logical :: fill_color_matrix(width, height)
+        type(color_type) :: fill_color_matrix(width, height)
         integer :: pix_x, pix_y
         complex :: z
         
@@ -111,7 +114,7 @@ program draw_rect
     integer(c_int), parameter :: width = 800
     integer(c_int), parameter :: height = 500
     integer(c_int) :: pix_x, pix_y
-    logical, dimension(width, height) :: color_matrix
+    type(color_type), dimension(width, height) :: color_matrix
 
     color_matrix = fill_color_matrix(width, height)
 
@@ -122,11 +125,7 @@ program draw_rect
 
         do pix_x = 1, width
             do pix_y = 1, height
-                if (color_matrix(pix_x, pix_y)) then
-                    call draw_pixel(pix_x, pix_y, color_type(127, 127, 127, 127))
-                else
-                    call draw_pixel(pix_x, pix_y, color_type(0, 0, 0, 127))
-                end if
+                call draw_pixel(pix_x, pix_y, color_matrix(pix_x, pix_y))
             enddo
         enddo
 
