@@ -38,68 +38,78 @@ module raylib
             integer(kind=c_int), value :: posY
             type(color_type), value :: color
         end subroutine draw_pixel
+
+        subroutine draw_text(text, posX, posY, fontsize, color) bind(C, name="DrawText")
+            use iso_c_binding, only: c_char, c_int
+            import :: color_type
+            character(kind=c_char) :: text(*)
+            integer(kind=c_int), value :: posX
+            integer(kind=c_int), value :: posY
+            integer(kind=c_int), value :: fontsize
+            type(color_type), value :: color
+        end subroutine draw_text
     end interface
 end module raylib
 
 module mandelbrot
-    use raylib
+    use raylib, only: color_type
     contains
-    pure complex function scalepixel(pixel_x, pixel_y, width, height)
+    pure complex function scale_pixel(pixel_x, pixel_y, width, height, x_lo, x_hi, y_lo, y_hi)
         integer, intent(in) :: pixel_x
         integer, intent(in) :: pixel_y
         integer, intent(in) :: width
         integer, intent(in) :: height
-        real :: x
-        real :: y
-
-        ! Mandelbrot coordinates
-        ! -2,1.12  ... 0.47,1.12
-        ! -2,-1.12 ... 0.47,-1.12
-        ! x range = 2.47
-        ! y range = 2.24
-    
-        ! 0,0   ... 800,0   ->  0,0 ... 1,0 -> 0,0  ... 1,0  -> 0,1 ... 1,1
-        ! 0,500 ... 800,500     0,1 ... 1,1    0,-1 ... 1,-1    0,0 ... 1,0
-
-        x = (( real(pixel_x) / width ) * 2.47 ) - 2.0
-        y = ((( -real(pixel_y) / height ) + 1.0 ) * 2.24 ) - 1.12
-        scalepixel = complex(x, y)
-    end function
+        real, intent(in) :: x_lo
+        real, intent(in) :: x_hi
+        real, intent(in) :: y_lo
+        real, intent(in) :: y_hi
+        real :: x_range, y_range
+        real :: r, i
+        ! 0,0      ... width,0      ->  0,0 ... 1,0 -> 0,0  ... 1,0  -> 0,1 ... 1,1
+        ! 0,height ... width,height     0,1 ... 1,1    0,-1 ... 1,-1    0,0 ... 1,0
+        x_range = x_hi - x_lo
+        y_range = y_hi - y_lo
+        r = (( real(pixel_x) / width ) * x_range ) + x_lo
+        i = ((( -real(pixel_y) / height ) + 1.0 ) * y_range ) + y_lo
+        scale_pixel = complex(r, i)
+    end function scale_pixel
 
      pure type(color_type) function escapes(z0) 
         complex, intent(in) :: z0
         complex :: z
-        integer :: max_iterations
-        integer :: iteration
-        integer :: scaled_iter
+        integer :: max_iter, iter, scaled_iter
         
         z = 0
-        iteration = 0
-        max_iterations = 100
-        do while (cabs(z) < 2 .and. iteration < max_iterations)
+        iter = 0
+        max_iter = 200
+        do while (cabs(z) < 2 .and. iter < max_iter)
             z = z*z + z0
-            iteration = iteration + 1
+            iter = iter + 1
         enddo
         
-        if (iteration >= max_iterations) then
+        if (iter >= max_iter) then
             escapes = color_type(0, 0, 0, 255)
         else
-            scaled_iter = int(255*(1 - exp(-5*real(iteration)/max_iterations)))
-            escapes = color_type(scaled_iter, scaled_iter, 255-scaled_iter, 255)
+            scaled_iter = int(255*(1 - exp(-5*real(iter)/max_iter)))
+            escapes = color_type(127-scaled_iter, scaled_iter, 255-scaled_iter, 255)
         end if
     end function escapes
 
-    function fill_color_matrix(width, height)
+    function fill_color_matrix(width, height, x_lo, x_hi, y_lo, y_hi)
         integer, intent(in) :: width
         integer, intent(in) :: height
+        real, intent(in) :: x_lo
+        real, intent(in) :: x_hi
+        real, intent(in) :: y_lo
+        real, intent(in) :: y_hi
         type(color_type) :: fill_color_matrix(width, height)
         integer :: pix_x, pix_y
         complex :: z
         
         do pix_x = 1, width
             do pix_y = 1, height
-                z = scalepixel(pix_x, pix_y, width, height)
-                fill_color_matrix(pix_x,pix_y) = escapes(z)
+                z = scale_pixel(pix_x, pix_y, width, height, x_lo, x_hi, y_lo, y_hi)
+                fill_color_matrix(pix_x, pix_y) = escapes(z)
             enddo
         enddo
     end function fill_color_matrix
@@ -111,15 +121,20 @@ program draw_rect
     use iso_c_binding
     implicit none
 
-    integer(c_int), parameter :: width = 800
-    integer(c_int), parameter :: height = 500
+    integer(c_int), parameter :: width = 1000
+    integer(c_int), parameter :: height = 900
     integer(c_int) :: pix_x, pix_y
     type(color_type), dimension(width, height) :: color_matrix
+    logical, parameter :: debug = .true.
+    character(50) :: dbgstr1, dbgstr2, dbgstr3, dbgstr4
+    real, parameter :: x_lo = -2.0                                      ! Mandelbrot limits
+    real, parameter :: x_hi = 0.5                                      ! -2,1.12  ... 0.47,1.12
+    real, parameter :: y_lo = -1.12                                      ! -2,-1.12 ... 0.47,-1.12
+    real, parameter :: y_hi = y_lo + (x_hi - x_lo)*(real(height)/width)
 
-    color_matrix = fill_color_matrix(width, height)
+    color_matrix = fill_color_matrix(width, height, x_lo, x_hi, y_lo, y_hi)
 
     call init_win(width, height, "Mandelbrot Set"//c_null_char)
-
     do while (.not. win_should_close())
         call begin_draw()
 
@@ -129,9 +144,17 @@ program draw_rect
             enddo
         enddo
 
+        if (debug) then
+            write (dbgstr1, '(f10.7)') x_lo
+            write (dbgstr2, '(f10.7)') x_hi
+            write (dbgstr3, '(f10.7)') y_lo
+            write (dbgstr4, '(f10.7)') y_hi
+            call draw_text(dbgstr1//c_null_char, 5, 0, 3, color_type(255,255,255,255))
+            call draw_text(dbgstr2//c_null_char, 5, 10, 3, color_type(255,255,255,255))
+            call draw_text(dbgstr3//c_null_char, 5, 20, 3, color_type(255,255,255,255))
+            call draw_text(dbgstr4//c_null_char, 5, 30, 3, color_type(255,255,255,255))
+        end if
         call end_draw()
     enddo
-    
     call close_win()
-
 end program
