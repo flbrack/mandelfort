@@ -74,8 +74,29 @@ module mandelbrot
         scale_pixel = complex(r, i)
     end function scale_pixel
 
-     pure type(color_type) function escapes(z0) 
+    function create_palette(n)
+        integer, intent(in) :: n
+        type(color_type) :: create_palette(n)
+        integer :: i
+
+        do i = 1, n
+            if (i < 255) then
+                ! (0, 0, 255) -> (255, 0, 0)
+                create_palette(i) = color_type(i, 0, 255-i, 255)
+            else if (i < 510) then
+                ! (255, 0, 0) -> (0, 255, 0)
+                create_palette(i) = color_type(510-i, i-255, 0, 255)
+            else
+                ! (0, 255, 0) -> (0, 255, 255)
+                create_palette(i) = color_type(0, 255, i-510, 255)
+            end if
+        enddo
+    end function create_palette
+
+    pure type(color_type) function escapes(z0, palette, palette_size) 
         complex, intent(in) :: z0
+        type(color_type), intent(in) :: palette(*)
+        integer, intent(in) :: palette_size
         complex :: z
         integer :: max_iter, iter, scaled_iter
         
@@ -90,18 +111,22 @@ module mandelbrot
         if (iter >= max_iter) then
             escapes = color_type(0, 0, 0, 255)
         else
-            scaled_iter = int(255*(1 - exp(-5*real(iter)/max_iter)))
-            escapes = color_type(127-scaled_iter, scaled_iter, 255-scaled_iter, 255)
+            ! scaled_iter = int(255*(1 - exp(-2*real(iter)/max_iter)))
+            scaled_iter = int(mod((( (real(iter)/max_iter) ** 2.0) * palette_size) ** 1.5, real(palette_size)))
+            ! escapes = color_type(127-scaled_iter, scaled_iter, 255-scaled_iter, 255)
+            escapes = palette(scaled_iter)
         end if
     end function escapes
 
-    function fill_color_matrix(width, height, x_lo, x_hi, y_lo, y_hi)
+    function fill_color_matrix(width, height, x_lo, x_hi, y_lo, y_hi, palette, palette_size)
         integer, intent(in) :: width
         integer, intent(in) :: height
         real, intent(in) :: x_lo
         real, intent(in) :: x_hi
         real, intent(in) :: y_lo
         real, intent(in) :: y_hi
+        integer, intent(in) :: palette_size
+        type(color_type) :: palette(*)
         type(color_type) :: fill_color_matrix(width, height)
         integer :: pix_x, pix_y
         complex :: z
@@ -109,7 +134,7 @@ module mandelbrot
         do pix_x = 1, width
             do pix_y = 1, height
                 z = scale_pixel(pix_x, pix_y, width, height, x_lo, x_hi, y_lo, y_hi)
-                fill_color_matrix(pix_x, pix_y) = escapes(z)
+                fill_color_matrix(pix_x, pix_y) = escapes(z, palette, palette_size)
             enddo
         enddo
     end function fill_color_matrix
@@ -122,17 +147,20 @@ program draw_rect
     implicit none
 
     integer(c_int), parameter :: width = 1000
-    integer(c_int), parameter :: height = 900
+    integer(c_int), parameter :: height = 800
     integer(c_int) :: pix_x, pix_y
     type(color_type), dimension(width, height) :: color_matrix
+    integer, parameter :: palette_size = 765
+    type(color_type), dimension(palette_size) :: palette
     logical, parameter :: debug = .true.
     character(50) :: dbgstr1, dbgstr2, dbgstr3, dbgstr4
-    real, parameter :: x_lo = -2.0                                      ! Mandelbrot limits
-    real, parameter :: x_hi = 0.5                                      ! -2,1.12  ... 0.47,1.12
-    real, parameter :: y_lo = -1.12                                      ! -2,-1.12 ... 0.47,-1.12
+    real, parameter :: x_lo = 0.012                                      ! Mandelbrot limits
+    real, parameter :: x_hi = 0.0125                                      ! -2,1.12  ... 0.47,1.12
+    real, parameter :: y_lo = 0.65                                      ! -2,-1.12 ... 0.47,-1.12
     real, parameter :: y_hi = y_lo + (x_hi - x_lo)*(real(height)/width)
 
-    color_matrix = fill_color_matrix(width, height, x_lo, x_hi, y_lo, y_hi)
+    palette = create_palette(palette_size)
+    color_matrix = fill_color_matrix(width, height, x_lo, x_hi, y_lo, y_hi, palette, palette_size)
 
     call init_win(width, height, "Mandelbrot Set"//c_null_char)
     do while (.not. win_should_close())
